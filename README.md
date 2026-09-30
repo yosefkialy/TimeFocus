@@ -383,6 +383,12 @@ scripts/              בנייה (build.sh), אריזה וחתימה (build_app.
 - זיהוי גלישה פרטית עובד ב-Chrome, Brave ו-Edge (דרך AppleScript) וב-Firefox (לפי הכותרת). ב-Safari אין דרך ציבורית לזהות אותה, ולכן מומלץ להחריג אתרים רגישים.
 - ביישומים שכותרת החלון שלהם קבועה (למשל Claude, שבו הכותרת תמיד "Claude"), כל החלונות נחשבים לאותה פעילות.
 
+---
+
+## רישיון
+
+הקוד מופץ תחת [רישיון MIT](LICENSE). מותר להשתמש בו, לשנות אותו ולהפיץ אותו, גם למטרות מסחריות, בתנאי שהודעת זכויות היוצרים והרישיון נשמרים. המודלים שהאפליקציה מורידה (E5, ‏Gemma, ‏Qwen) וה-runtime של llama.cpp אינם חלק מהמאגר, ולכל אחד מהם רישיון משלו.
+
 </div>
 
 ---
@@ -410,3 +416,5 @@ scripts/build_app.sh --install
 Then open TimeFocus from `/Applications`. It is a menu-bar app, so it has no Dock icon. Grant Accessibility access when asked (System Settings → Privacy & Security → Accessibility). Download the E5 model from the onboarding screen. You can also add an LLM under "Learning & Models". Rebuilding with the default ad-hoc signature means you need to re-add TimeFocus to the Accessibility list. To avoid that, sign with a stable identity: `TIMEFOCUS_SIGN_IDENTITY="<cert name>" scripts/build_app.sh --install`.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the architecture and ML design.
+
+**License:** [MIT](LICENSE). The models the app downloads (E5, Gemma, Qwen) and the llama.cpp runtime are not part of this repository and come with their own licenses.
