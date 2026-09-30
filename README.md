@@ -1,3 +1,5 @@
+<div dir="rtl">
+
 <p align="center"><img src="docs/images/icon.png" width="128" alt="TimeFocus"></p>
 
 <h1 align="center">TimeFocus</h1>
@@ -6,7 +8,7 @@
 
 ---
 
-TimeFocus לומד בעצמו אילו **סוגי פעילות** יש לך במחשב (עבודה, לימודים, תקשורת, בידור…). כל יום בוחרים על מה להתמקד, לכל היום או לפי שעות, והוא עוזר לך להישאר שם. כשסוטים מגיעה תזכורת עדינה, ואם ממשיכים, היישום המסיח **מואט בהדרגה** עד שחוזרים.
+האפליקציה לומדת בעצמה אילו **סוגי פעילות** יש לך במחשב (עבודה, לימודים, תקשורת, בידור…). כל יום בוחרים על מה להתמקד, לכל היום או לפי שעות, והיא עוזרת לך להישאר שם. כשסוטים מגיעה תזכורת עדינה, ואם ממשיכים, היישום המסיח **מואט בהדרגה** עד שחוזרים.
 
 - **לומד לבד**: אין צורך להגדיר רשימות של אתרים ויישומים. הוא מזהה סוגי פעילות לפי מה שבאמת מופיע על המסך, גם בעברית.
 - **מבין תוכן חדש**: הרצאה חדשה באותו קורס או משימה חדשה באותו פרויקט מזוהות כאותו סוג פעילות.
@@ -41,51 +43,75 @@ TimeFocus לומד בעצמו אילו **סוגי פעילות** יש לך במ�
 
 ## התקנה
 
-TimeFocus מופץ כקוד מקור ונבנה על המחשב שלך בפקודה אחת. זה לוקח כמה דקות, ובסוף האפליקציה מותקנת בתיקיית היישומים.
+האפליקציה מופצת כקוד מקור ונבנית על המחשב שלך בפקודה אחת. זה לוקח כמה דקות, ובסוף האפליקציה מותקנת בתיקיית היישומים.
 
 ### 1. התקנת Command Line Tools
 
 פותחים את **Terminal** (חיפוש Spotlight עם ⌘+רווח, ומקלידים Terminal) ומריצים:
 
+<div dir="ltr">
+
 ```bash
 xcode-select --install
 ```
+
+</div>
 
 נפתח חלון התקנה. לוחצים "התקן" ומחכים שיסתיים. אם מופיעה ההודעה `command line tools are already installed`, הכלים כבר מותקנים.
 
 כדי לבדוק שהכל תקין:
 
+<div dir="ltr">
+
 ```bash
 xcrun swiftc --version
 ```
+
+</div>
 
 אמורה להופיע שורה שמתחילה ב-`Apple Swift version`.
 
 ### 2. הורדת הקוד
 
+<div dir="ltr">
+
 ```bash
 git clone https://github.com/yosefkialy/TimeFocus.git
 ```
+
+</div>
+
+<div dir="ltr">
 
 ```bash
 cd TimeFocus
 ```
 
+</div>
+
 > אפשר גם להוריד ZIP מהכפתור **Code ← Download ZIP** בראש העמוד ולפתוח אותו. אחר כך מקלידים ב-Terminal ‏`cd` ורווח, גוררים את התיקייה לחלון ולוחצים Enter.
 
 ### 3. בנייה והתקנה
+
+<div dir="ltr">
 
 ```bash
 scripts/build_app.sh --install
 ```
 
+</div>
+
 הסקריפט מקמפל את האפליקציה במצב release, חותם אותה חתימה מקומית (ad-hoc) ומעתיק אותה ל-`/Applications`. אם אין הרשאת כתיבה לשם, הוא מעתיק ל-`~/Applications`. אזהרות קומפילציה במהלך הבנייה תקינות. הבנייה הצליחה אם השורה האחרונה היא `installed to …/TimeFocus.app`.
 
 ### 4. הפעלה
 
+<div dir="ltr">
+
 ```bash
 open /Applications/TimeFocus.app
 ```
+
+</div>
 
 אפשר גם לפתוח מ-Launchpad או מ-Spotlight.
 
@@ -140,13 +166,21 @@ open /Applications/TimeFocus.app
 
 ## עדכון לגרסה חדשה
 
+<div dir="ltr">
+
 ```bash
 cd TimeFocus
 ```
 
+</div>
+
+<div dir="ltr">
+
 ```bash
 git pull && scripts/build_app.sh --install
 ```
+
+</div>
 
 הנתונים, סוגי הפעילות והמודלים נשמרים. אחרי כל בנייה צריך לתת מחדש את הרשאת הנגישות (ההסבר בסעיף הבא).
 
@@ -157,7 +191,7 @@ git pull && scripts/build_app.sh --install
 <details>
 <summary><b>אחרי עדכון או בנייה מחדש האפליקציה לא מזהה חלונות, למרות ש-TimeFocus מסומן ברשימת הנגישות</b></summary>
 
-macOS קושר הרשאות לחתימת הקוד, ובחתימה ad-hoc (ברירת המחדל) החתימה משתנה בכל בנייה. הפתרון: בהגדרות מערכת ← פרטיות ואבטחה ← נגישות, בוחרים את TimeFocus, מסירים אותו עם **−**, מוסיפים אותו שוב עם **+** ופותחים את האפליקציה מחדש.
+מערכת ההפעלה קושרת הרשאות לחתימת הקוד, ובחתימה ad-hoc (ברירת המחדל) החתימה משתנה בכל בנייה. הפתרון: בהגדרות מערכת ← פרטיות ואבטחה ← נגישות, בוחרים את TimeFocus, מסירים אותו עם **−**, מוסיפים אותו שוב עם **+** ופותחים את האפליקציה מחדש.
 
 **כדי שזה לא יקרה בכל עדכון**, אפשר לחתום בתעודה מקומית קבועה:
 
@@ -165,9 +199,13 @@ macOS קושר הרשאות לחתימת הקוד, ובחתימה ad-hoc (ברי
 2. שם: `TimeFocus Local`, סוג זהות: שורש בחתימה עצמית (Self-Signed Root), סוג אישור: חתימת קוד (Code Signing) ← צור.
 3. בונים עם התעודה (בפעם הראשונה macOS ישאל אם לאפשר גישה לצרור המפתחות: "אפשר תמיד"):
 
+<div dir="ltr">
+
 ```bash
 TIMEFOCUS_SIGN_IDENTITY="TimeFocus Local" scripts/build_app.sh --install
 ```
+
+</div>
 
 מתחילים לעבוד עם התעודה, ומתן ההרשאה אחרי כל בנייה כבר לא יידרש.
 </details>
@@ -195,21 +233,25 @@ TIMEFOCUS_SIGN_IDENTITY="TimeFocus Local" scripts/build_app.sh --install
 
 צריך macOS 26 ומעלה עם Apple Intelligence מופעלת (הגדרות מערכת ← Apple Intelligence ו-Siri). האפליקציה בודקת בזמן ריצה שכל ה-API שהיא נבנתה מולו קיים במערכת. אם עדכנת את macOS מאז הבנייה, צריך לעדכן את Command Line Tools ולבנות מחדש. עד אז המערכת משתמשת ב-Gemma, אם הוא מותקן. בדיקה מפורטת:
 
+<div dir="ltr">
+
 ```bash
 scripts/build.sh FocusSelfTest && .build-swiftc/bin/FocusSelfTest --apple-intelligence
 ```
+
+</div>
 </details>
 
 <details>
 <summary><b>האטה שלא משתחררת או יישום "תקוע"</b></summary>
 
-`⌃⌥⌘.` מבטל מיד כל האטה. גם אם TimeFocus קורס או נסגר בכוח, תהליך watchdog נפרד משחרר את כל מה שהוא השהה.
+הקיצור `⌃⌥⌘.` מבטל מיד כל האטה. גם אם TimeFocus קורס או נסגר בכוח, תהליך watchdog נפרד משחרר את כל מה שהוא השהה.
 </details>
 
 <details>
 <summary><b>איפה הלוג?</b></summary>
 
-`~/Library/Application Support/TimeFocus/Logs/timefocus.log`. הוא לא כולל את תוכן החלונות.
+בקובץ `~/Library/Application Support/TimeFocus/Logs/timefocus.log`. הוא לא כולל את תוכן החלונות.
 </details>
 
 ---
@@ -219,17 +261,29 @@ scripts/build.sh FocusSelfTest && .build-swiftc/bin/FocusSelfTest --apple-intell
 1. בתפריט של TimeFocus לוחצים **יציאה**. אם הופעלה "הפעלה עם הכניסה למחשב", כדאי לכבות אותה קודם בהגדרות האפליקציה.
 2. מוחקים את האפליקציה, את הנתונים והמודלים ואת ההגדרות:
 
+<div dir="ltr">
+
 ```bash
 rm -rf /Applications/TimeFocus.app ~/Applications/TimeFocus.app
 ```
+
+</div>
+
+<div dir="ltr">
 
 ```bash
 rm -rf ~/Library/Application\ Support/TimeFocus
 ```
 
+</div>
+
+<div dir="ltr">
+
 ```bash
 defaults delete com.timefocus.app
 ```
+
+</div>
 
 3. בהגדרות מערכת ← פרטיות ואבטחה ← נגישות (ובהקלטת מסך, אם ניתנה הרשאה) מסירים את TimeFocus עם **−**.
 
@@ -260,13 +314,17 @@ defaults delete com.timefocus.app
 
 ## פיתוח ובדיקות
 
+<div dir="ltr">
+
 ```bash
 scripts/build.sh                      # כל המטרות (.build-swiftc/bin)
 scripts/build.sh TFWatchdog FocusSelfTest && .build-swiftc/bin/FocusSelfTest    # 23 בדיקות
 scripts/build.sh EncoderCheck && .build-swiftc/bin/EncoderCheck      # אימות הטרנספורמר מול PyTorch (31 בדיקות)
 ```
 
-`scripts/build.sh` קורא ישירות ל-`swiftc` (בלי SwiftPM ובלי Xcode) ובונה הכל מחדש אוטומטית כשגרסת הקומפיילר או ה-SDK משתנה. גם `swift build` בונה את כל המטרות (`swift build --show-bin-path` מראה לאן).
+</div>
+
+הסקריפט `scripts/build.sh` קורא ישירות ל-`swiftc` (בלי SwiftPM ובלי Xcode) ובונה הכל מחדש אוטומטית כשגרסת הקומפיילר או ה-SDK משתנה. גם `swift build` בונה את כל המטרות (`swift build --show-bin-path` מראה לאן).
 
 ב-UI משתמשים ב-`@ViewState` ולא ב-`@State`: החל מ-SDK 27, ‏`@State` הוא מאקרו של SwiftUI שהפלאגין שלו מגיע רק עם Xcode (ראו `Sources/TimeFocusApp/UI/ViewState.swift`).
 
@@ -281,6 +339,8 @@ scripts/build.sh EncoderCheck && .build-swiftc/bin/EncoderCheck      # אימו�
 
 כלי פיתוח:
 
+<div dir="ltr">
+
 ```bash
 .build-swiftc/bin/FocusSelfTest --make-demo /tmp/tf-demo [--with-llm]   # נתוני דמו ל-4 ימים + הרצת הצנרת
 TIMEFOCUS_SUPPORT_DIR=/tmp/tf-demo .build-swiftc/bin/TimeFocusApp --snapshot /tmp/shots   # צילום כל המסכים ל-PNG
@@ -290,9 +350,13 @@ AUTO=1 .build-swiftc/bin/FocusSelfTest --cluster-report /tmp/tf-demo      # ני
 .build-swiftc/bin/FocusSelfTest --apple-intelligence                        # אותן משימות מול Apple Intelligence
 ```
 
+</div>
+
 > אם `swift build` נכשל מיד עם `spec … already registered`, נשארו קבצים מהתקנה ישנה של Command Line Tools. הפתרון: `sudo find /Library/Developer/CommandLineTools/usr/lib/swift/pm -type f -name "* *.xcspec" -delete`. הבעיה לא משפיעה על `scripts/build.sh`.
 
 ### מבנה הפרויקט
+
+<div dir="ltr">
 
 ```
 Sources/
@@ -307,6 +371,8 @@ docs/ARCHITECTURE.md  הארכיטקטורה וה-ML בפירוט
 scripts/              בנייה (build.sh), אריזה וחתימה (build_app.sh), יצירת האייקון
 ```
 
+</div>
+
 ---
 
 ## מגבלות ידועות
@@ -316,6 +382,8 @@ scripts/              בנייה (build.sh), אריזה וחתימה (build_app.
 - ב-Safari ההאטה חלה גם על תהליכי WebKit המשותפים (למשל תצוגת מייל), כל עוד הסטייה היא ב-Safari.
 - זיהוי גלישה פרטית עובד ב-Chrome, Brave ו-Edge (דרך AppleScript) וב-Firefox (לפי הכותרת). ב-Safari אין דרך ציבורית לזהות אותה, ולכן מומלץ להחריג אתרים רגישים.
 - ביישומים שכותרת החלון שלהם קבועה (למשל Claude, שבו הכותרת תמיד "Claude"), כל החלונות נחשבים לאותה פעילות.
+
+</div>
 
 ---
 
