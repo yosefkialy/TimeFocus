@@ -1,0 +1,12 @@
+# build output
+.build-swiftc/
+.build/
+build/
+.swiftpm/
+*.dSYM/
+
+# editors / local tooling
+*.xcodeproj
+xcuserdata/
+.claude/
+.DS_Store

@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>he</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>he</string>
+	</array>
+	<key>CFBundleExecutable</key>
+	<string>TimeFocus</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.timefocus.app</string>
+	<key>CFBundleName</key>
+	<string>TimeFocus</string>
+	<key>CFBundleDisplayName</key>
+	<string>TimeFocus</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.productivity</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>TimeFocus קורא את כתובת הלשונית הפעילה בדפדפן כדי לזהות את סוג הפעילות. המידע נשמר רק על המחשב הזה.</string>
+	<key>NSHumanReadableCopyright</key>
+	<string>TimeFocus — עוזר מיקוד מקומי. אף מידע לא יוצא מהמחשב.</string>
+</dict>
+</plist>
