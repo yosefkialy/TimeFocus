@@ -126,7 +126,7 @@ open /Applications/TimeFocus.app
 | **נגישות** (חובה) | לדעת איזה יישום וחלון פתוחים, מה כתובת האתר ומה הטקסט הגלוי | הגדרות מערכת ← פרטיות ואבטחה ← נגישות ← להפעיל את TimeFocus |
 | **התראות** (מומלץ) | תזכורות עם כפתורי פעולה | מאשרים כשמופיעה הבקשה |
 | **אוטומציה של דפדפנים** (מומלץ) | לקרוא את כתובת הלשונית הפעילה ב-Chrome/Safari ולזהות גלישה פרטית | כשמופיעה הבקשה "TimeFocus רוצה לשלוט ב-Google Chrome", לוחצים "אישור" |
-| **הקלטת מסך** (אופציונלי) | רק אם מפעילים OCR בהגדרות. לא נדרש בדרך כלל | הגדרות מערכת ← פרטיות ואבטחה ← הקלטת מסך |
+| **הקלטת מסך** (אופציונלי) | רק לזיהוי טקסט (OCR), שמפעילים בהגדרות: קריאת תוכן שאין לו טקסט נגיש (PDF, שקפים בווידאו, תמונות), גם בעברית | הגדרות מערכת ← פרטיות ואבטחה ← הקלטת מסך |
 
 > אם אחרי מתן הרשאת נגישות האפליקציה עדיין מבקשת אותה, צריך לצאת ממנה (תפריט ← יציאה) ולפתוח אותה מחדש.
 
@@ -139,6 +139,13 @@ open /Applications/TimeFocus.app
    - **עם Apple Intelligence**: אם היא זמינה במחשב, משתמשים בה אוטומטית ואין מה להוריד.
    - **עם llama.cpp ו-Gemma**: לוחצים "התקן את llama.cpp" (הורדה רשמית מ-GitHub, כ-30MB, או `brew install llama.cpp`) ואז מורידים את **Gemma 3 1B** (כ-0.8GB, מתאים ל-8GB זיכרון) או את **Gemma 3 4B** (כ-2.5GB, איכות ועברית טובות יותר, צורך כ-3.5GB זיכרון בזמן הלמידה).
    - **עם שרת מקומי תואם OpenAI** (Ollama או LM Studio). האפליקציה מסרבת לכל כתובת שאינה המחשב עצמו.
+3. **זיהוי טקסט (OCR) בעברית** (אופציונלי): ה-OCR של macOS לא קורא עברית, ולכן העברית נקראת ב-Tesseract (קוד פתוח). מתקינים אותו ב-Terminal:
+
+   ```bash
+   brew install tesseract
+   ```
+
+   ואז ב**הגדרות ← מעקב** מפעילים "זיהוי טקסט (OCR)", לוחצים "הורד" ליד "עברית (Tesseract)" (כ-3.7MB) ונותנים הרשאת הקלטת מסך.
 
 זהו. מכאן פשוט עובדים כרגיל.
 
@@ -298,13 +305,14 @@ defaults delete com.timefocus.app
 | רשת "תלמיד" (Embedding-bag + MLP, כ-5MB) | סיווג כל 4 שניות, פחות מ-1ms | נבנית ומאומנת על המחשב |
 | **multilingual-e5-small** (טרנספורמר 118M פרמטרים) | ייצוג סמנטי רב-לשוני (עברית ואנגלית), "המורה" של הרשת | Hugging Face ‏(`intfloat/multilingual-e5-small`). רץ במנוע Swift/Accelerate שכתוב בפרויקט, ראו [docs/ENCODER.md](docs/ENCODER.md) |
 | **llama.cpp + Gemma 3** (‏1B או 4B) | תיאור מופשט של כל פעילות, שמות לסוגים, סיווג zero-shot של תוכן חדש | הגרסה הרשמית של llama.cpp מ-GitHub, קובצי GGUF מ-Hugging Face (`ggml-org`) |
+| **Tesseract** + מודל העברית (`heb`, ‏LSTM, כ-3.7MB) | זיהוי טקסט (OCR) בעברית באזור התוכן של החלון, כשה-OCR פעיל. אותיות לטיניות נקראות ב-OCR של macOS ‏(Vision) והשניים מתמזגים מילה-מילה | `brew install tesseract`, המודל מ-`tesseract-ocr/tessdata_best` ב-GitHub |
 | **Apple Intelligence** | אותן משימות כמו Gemma, בלי הורדה ובלי זיכרון נוסף באפליקציה | מערכת ההפעלה. במצב "אוטומטי" מקבלת עדיפות על Gemma. נבדקה גם על חלונות בעברית, כ-1.5 שניות לקריאה |
 
 ---
 
 ## פרטיות ובטיחות
 
-- **מה נשמר**: שם היישום, כותרת החלון (אחרי ניקוי), דומיין ונתיב, עד 3,000 תווים של טקסט גלוי (כתובות מייל ומספרי כרטיס מוסתרים), **ספירת** הקלדות, קליקים וגלילות (אף פעם לא תוכן ההקשות), וזמנים.
+- **מה נשמר**: שם היישום, כותרת החלון (אחרי ניקוי), דומיין ונתיב, עד 3,000 תווים של טקסט גלוי מאזור התוכן של החלון (כתובות מייל ומספרי כרטיס מוסתרים), **ספירת** הקלדות, קליקים וגלילות (אף פעם לא תוכן ההקשות), וזמנים. כשה-OCR פעיל, צילום המסך נקרא בזיכרון ולא נשמר, ונשמר רק הטקסט שזוהה.
 - **איפה**: רק ב-`~/Library/Application Support/TimeFocus` (SQLite). טקסט גולמי נמחק אחרי 14 יום (אפשר לשנות), ונשארים רק ייצוגים מופשטים.
 - **מה לא נקרא אף פעם**: מנהלי סיסמאות (1Password, Bitwarden, Keychain…), חלונות גלישה פרטית ושדות סיסמה. אפשר להוסיף עוד יישומים ואתרים להחרגה, למשל הבנק.
 - **רשת**: הגישה היחידה לאינטרנט היא הורדת מודל או runtime, רק כשלוחצים "הורד". קריאות למודל השפה נשלחות רק ל-127.0.0.1.
@@ -377,7 +385,9 @@ scripts/              בנייה (build.sh), אריזה וחתימה (build_app.
 
 ## מגבלות ידועות
 
-- ה-OCR של Apple ‏(Vision) לא תומך בעברית. תוכן בעברית נקרא דרך Accessibility, וזה עובד ברוב היישומים. ב-Chrome וביישומי Electron מופעלת נגישות מלאה אוטומטית.
+- ה-OCR של Apple ‏(Vision) לא תומך בעברית (נבדק ב-macOS 27), וגם Apple Intelligence לא קוראת עברית מתמונות. לכן עברית ב-OCR נקראת ב-Tesseract, שצריך להתקין מ-Homebrew. בלעדיו תוכן בעברית נקרא רק דרך Accessibility, וזה עובד ברוב היישומים.
+- בפעם הראשונה אחרי התקנה או עדכון, קריאת ה-OCR הראשונה לוקחת כחצי דקה: macOS מכין את מודל הזיהוי לתוכנה החדשה. מכאן והלאה כל קריאה לוקחת שנייה-שתיים.
+- רק כ-46% מהאתרים מסמנים את התוכן הראשי שלהם. באתרים שלא מסמנים, האפליקציה חותכת את סרגלי הניווט, הכותרת והתחתית לפי מבנה הדף והפריסה שלו, ושורות שחוזרות בכמעט כל הדפים של אותו אתר מסוננות אחרי שהיא רואה כמה דפים ממנו.
 - עברית אינה ברשימת השפות הרשמית של Apple Intelligence. בבדיקות היא טיפלה היטב בחלונות בעברית, אבל אם האיכות לא מספקת אפשר לבחור ב-Gemma במסך "למידה ומודלים".
 - ב-Safari ההאטה חלה גם על תהליכי WebKit המשותפים (למשל תצוגת מייל), כל עוד הסטייה היא ב-Safari.
 - זיהוי גלישה פרטית עובד ב-Chrome, Brave ו-Edge (דרך AppleScript) וב-Firefox (לפי הכותרת). ב-Safari אין דרך ציבורית לזהות אותה, ולכן מומלץ להחריג אתרים רגישים.
@@ -413,7 +423,7 @@ git clone https://github.com/yosefkialy/TimeFocus.git && cd TimeFocus
 scripts/build_app.sh --install
 ```
 
-Then open TimeFocus from `/Applications`. It is a menu-bar app, so it has no Dock icon. Grant Accessibility access when asked (System Settings → Privacy & Security → Accessibility). Download the E5 model from the onboarding screen. You can also add an LLM under "Learning & Models". Rebuilding with the default ad-hoc signature means you need to re-add TimeFocus to the Accessibility list. To avoid that, sign with a stable identity: `TIMEFOCUS_SIGN_IDENTITY="<cert name>" scripts/build_app.sh --install`.
+Then open TimeFocus from `/Applications`. It is a menu-bar app, so it has no Dock icon. Grant Accessibility access when asked (System Settings → Privacy & Security → Accessibility). Download the E5 model from the onboarding screen. You can also add an LLM under "Learning & Models". Optional OCR (Settings → Tracking) reads only the window's content area — a page's main landmark or the page without its navigation, an app's document pane without its sidebars — and drops lines an app or site repeats in most of its windows. Apple's Vision OCR has no Hebrew, so Hebrew is read with Tesseract (`brew install tesseract`, then download the Hebrew model in Settings) and merged word by word with Vision's Latin text. Rebuilding with the default ad-hoc signature means you need to re-add TimeFocus to the Accessibility list. To avoid that, sign with a stable identity: `TIMEFOCUS_SIGN_IDENTITY="<cert name>" scripts/build_app.sh --install`.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the architecture and ML design.
 

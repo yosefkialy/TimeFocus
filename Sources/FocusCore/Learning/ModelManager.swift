@@ -3,7 +3,7 @@ import FocusTransformer
 
 /// Open-source models the app can download on explicit user request (inbound only — nothing is uploaded).
 public struct CatalogModel: Identifiable, Equatable {
-    public enum Kind: String { case embedding, llm }
+    public enum Kind: String { case embedding, llm, ocr }
     public var id: String
     public var kind: Kind
     public var title: String
@@ -16,6 +16,10 @@ public struct CatalogModel: Identifiable, Equatable {
 
     static func hf(_ repo: String, _ file: String) -> URL {
         URL(string: "https://huggingface.co/\(repo)/resolve/main/\(file)")!
+    }
+
+    static func github(_ repo: String, _ file: String) -> URL {
+        URL(string: "https://github.com/\(repo)/raw/main/\(file)")!
     }
 }
 
@@ -53,7 +57,15 @@ public enum ModelCatalog {
                      recommended: false),
     ]
 
-    public static var all: [CatalogModel] { embeddingModels + llmModels }
+    /// Tesseract's Hebrew model (Apple's Vision OCR has no Hebrew); the `tesseract` program itself comes from Homebrew.
+    public static let hebrewOCR = CatalogModel(
+        id: "tesseract-heb", kind: .ocr, title: "Tesseract — עברית",
+        details: "מודל זיהוי טקסט (OCR) לעברית, להבנת התוכן שעל המסך גם כשאין לו טקסט נגיש. נדרשת גם התוכנה tesseract (‏brew install tesseract).",
+        approxBytes: 3_704_077,
+        files: [(CatalogModel.github("tesseract-ocr/tessdata_best", "heb.traineddata"), "heb.traineddata")],
+        recommended: true)
+
+    public static var all: [CatalogModel] { embeddingModels + llmModels + [hebrewOCR] }
 }
 
 /// Downloads catalog models and the llama.cpp runtime, and reports what is installed.
@@ -84,7 +96,11 @@ public final class ModelManager: NSObject, URLSessionDownloadDelegate {
     public init(paths: AppPaths) { self.paths = paths }
 
     public func directory(for m: CatalogModel) -> URL {
-        m.kind == .embedding ? paths.modelDirectory(m.id) : paths.models.appendingPathComponent("llm", isDirectory: true)
+        switch m.kind {
+        case .embedding: return paths.modelDirectory(m.id)
+        case .llm: return paths.models.appendingPathComponent("llm", isDirectory: true)
+        case .ocr: return TesseractOCR.modelDirectory(paths)
+        }
     }
 
     public func isInstalled(_ m: CatalogModel) -> Bool {

@@ -82,7 +82,7 @@ struct OnboardingView: View {
             PermissionRow(title: "התראות (מומלץ)", detail: "תזכורות לחזור למיקוד, עם כפתורי פעולה מהירים.",
                           granted: model.notificationsAuthorized,
                           action: { model.notifications.requestAuthorization { ok in DispatchQueue.main.async { model.notificationsAuthorized = ok } } })
-            PermissionRow(title: "הקלטת מסך (אופציונלי)", detail: "רק אם תפעיל OCR בהגדרות. לא נדרש בדרך כלל.",
+            PermissionRow(title: "הקלטת מסך (אופציונלי)", detail: "רק לזיהוי טקסט (OCR) — מפעילים בהגדרות. עוזר להבין תוכן שאין לו טקסט נגיש (PDF, שקפים בווידאו, תמונות), גם בעברית.",
                           granted: model.hasScreenRecording,
                           action: { Permissions.requestScreenRecording(); Permissions.openSettings(.screenRecording) })
             Text("טיפ: אחרי מתן הרשאת נגישות ייתכן שיהיה צורך לסגור ולפתוח את TimeFocus מחדש.")

@@ -26,6 +26,16 @@ if let i = CommandLine.arguments.firstIndex(of: "--llm-check") {
     exit(0)
 }
 
+// OCR of an image file as TimeFocus reads a window: Vision + Tesseract (if installed), then the layout filter unless
+// --content says the image is already the content area.
+if let i = CommandLine.arguments.firstIndex(of: "--ocr"), CommandLine.arguments.count > i + 1 {
+    guard let image = OCRFixtures.load(CommandLine.arguments[i + 1]) else { print("cannot read image"); exit(1) }
+    let reading = OCRService.read(image, hebrew: true, regionIsContent: CommandLine.arguments.contains("--content"), paths: .default)
+    print(String(format: "%d lines, tesseract %@, %.2f s", reading.lines.count, reading.usedTesseract ? "yes" : "no", reading.seconds))
+    reading.lines.forEach { print($0) }
+    exit(0)
+}
+
 if CommandLine.arguments.contains("--apple-intelligence") {
     let sem = DispatchSemaphore(value: 0)
     Task.detached { await LLMCheck.runAppleIntelligence(); sem.signal() }
@@ -395,6 +405,176 @@ test("activity evidence: words an app shows in all its windows are not evidence 
     expect(!ActivityEvidence.isInformativeTitle("Open", appName: "Preview", host: nil)
            && !ActivityEvidence.isInformativeTitle("claude", appName: "Claude", host: nil)
            && ActivityEvidence.isInformativeTitle("#family", appName: "Slack", host: nil), "informative titles")
+}
+
+// MARK: - Screen text (OCR, content area, boilerplate)
+
+test("ocr: Tesseract TSV gives words with lines, blocks and confidence, without bidi marks") {
+    let tsv = [
+        "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext",
+        "1\t1\t0\t0\t0\t0\t0\t0\t800\t600\t-1\t",
+        "4\t1\t1\t1\t1\t0\t600\t10\t180\t20\t-1\t",
+        "5\t1\t1\t1\t1\t1\t700\t10\t80\t20\t92.5\tשלום",
+        "5\t1\t1\t1\t1\t2\t600\t10\t90\t20\t90.1\t\u{200F}עולם\u{200E}",
+        "5\t1\t2\t1\t1\t1\t100\t300\t50\t20\t13.9\tזסז",
+        "5\t1\t2\t1\t1\t2\t200\t300\t50\t20\t-1\t ",
+    ].joined(separator: "\n")
+    let words = OCRFusion.parseTesseractTSV(tsv)
+    expect(words.map(\.text) == ["שלום", "עולם", "זסז"], "words: \(words.map(\.text))")
+    expect(words[0].line == words[1].line && words[2].line != words[0].line && words[2].block == 2, "lines and blocks")
+    expect(abs(words[0].confidence - 0.925) < 1e-4 && words[0].box == CGRect(x: 700, y: 10, width: 80, height: 20), "box/confidence")
+}
+
+test("ocr fusion: Latin comes from Vision, Hebrew from Tesseract, mixed lines in right-to-left order") {
+    func t(_ text: String, _ x0: CGFloat, _ x1: CGFloat, _ y: CGFloat, _ conf: Float, line: Int, block: Int = 1) -> OCRWord {
+        OCRWord(text: text, box: CGRect(x: x0, y: y, width: x1 - x0, height: 20), confidence: conf, engine: .tesseract, block: block, line: line)
+    }
+    func box(_ x0: CGFloat, _ x1: CGFloat, _ y: CGFloat) -> CGRect { CGRect(x: x0, y: y, width: x1 - x0, height: 20) }
+    let tesseract = [
+        t("אלגברה", 700, 780, 10, 0.92, line: 0), t("לינארית", 600, 690, 10, 0.93, line: 0),
+        // the Hebrew model's reading of an English line: garbage, some of it confident
+        t("סזז", 100, 200, 50, 0.3, line: 1), t("חם", 210, 260, 50, 0.6, line: 1), t("צא", 270, 300, 50, 0.88, line: 1),
+        // a Hebrew line with one English word in the middle
+        t("באלגברה", 700, 790, 90, 0.93, line: 2), t("ערך", 640, 690, 90, 0.92, line: 2),
+        t("(גסזו)", 420, 600, 90, 0.4, line: 2), t("של", 380, 410, 90, 0.93, line: 2),
+        t("ג", 50, 60, 130, 0.3, line: 3),
+        // a bold Hebrew name and a time: Vision reads the name as Latin-looking noise — confidently
+        t("יוסי", 740, 784, 170, 0.91, line: 4), t("לוי", 700, 732, 170, 0.93, line: 4), t("10:45", 615, 689, 170, 0.93, line: 4),
+        // bold Hebrew between English names: Vision's lower-case noise must not replace it
+        t("זסו", 800, 900, 250, 0.3, line: 6), t("זיהוי", 700, 780, 250, 0.93, line: 6), t("טקסט", 620, 690, 250, 0.92, line: 6),
+        t("סזא", 560, 610, 250, 0.4, line: 6),
+    ]
+    let vision = [
+        VisionLine(text: "Definition of eigenvalue", box: box(100, 310, 50), confidence: 1.0,
+                   words: [("Definition", box(100, 190, 50)), ("of", box(196, 215, 50)), ("eigenvalue", box(221, 310, 50))]),
+        // Vision cannot split the Hebrew words next to a Latin word off its box
+        VisionLine(text: "(eigenvalue)", box: box(420, 790, 90), confidence: 1.0, words: [("eigenvalue", box(420, 790, 90))]),
+        VisionLine(text: "Y MDU 53", box: box(380, 790, 10), confidence: 0.3), // noise Vision reads off Hebrew
+        VisionLine(text: "10:45 17 'O1\"", box: box(615, 784, 170), confidence: 1.0,
+                   words: [("10:45", box(615, 689, 170)), ("17", box(700, 732, 170)), ("O1", box(740, 784, 170))]),
+        VisionLine(text: "OCR pınıka vonnx TimeFocus", box: box(560, 900, 250), confidence: 1.0,
+                   words: [("OCR", box(560, 610, 250)), ("pınıka", box(620, 690, 250)), ("vonnx", box(700, 780, 250)),
+                           ("TimeFocus", box(800, 900, 250))]),
+    ]
+    let lines = OCRFusion.merge(tesseract: tesseract, vision: vision).map(\.text)
+    expect(lines == ["אלגברה לינארית", "Definition of eigenvalue", "באלגברה ערך (eigenvalue) של", "יוסי לוי 10:45",
+                     "TimeFocus זיהוי טקסט OCR"], "lines: \(lines)")
+    expect(OCRFusion.merge(tesseract: [], vision: Array(vision.prefix(3))).map(\.text) == ["Definition of eigenvalue", "(eigenvalue)"],
+           "Vision only")
+    // an English sentence where the Hebrew model is sure of one misread word ("for" → "זסז") stays English
+    let english = [t("Example", 100, 190, 300, 0.2, line: 7), t("זסז", 196, 230, 300, 0.9, line: 7), t("סח", 236, 280, 300, 0.4, line: 7),
+                   t("ססזז", 286, 360, 300, 0.3, line: 7)]
+    let sentence = VisionLine(text: "Example: for the matrix", box: box(100, 360, 300), confidence: 1.0,
+                              words: [("Example", box(100, 190, 300)), ("for", box(196, 230, 300)), ("the", box(236, 280, 300)),
+                                      ("matrix", box(286, 360, 300))])
+    expect(OCRFusion.merge(tesseract: english, vision: [sentence]).map(\.text) == ["Example: for the matrix"], "English line")
+    // an English word in a Hebrew line that Vision missed: the Hebrew model's low-confidence reading marks where to look
+    let missed = [t("בנוסף", 700, 770, 210, 0.92, line: 5), t("ה-עסום08", 570, 690, 210, 0.09, line: 5),
+                  t("ל-סחו5180", 430, 560, 210, 0.31, line: 5), t("נכשל", 360, 420, 210, 0.91, line: 5)]
+    expect(OCRFusion.latinCandidates(tesseract: missed, vision: vision) == [box(430, 690, 210)], "neighbouring weak words are one place to look")
+}
+
+test("ocr layout: side columns and edge strips of short lines go, the main column stays") {
+    var lines: [OCRLine] = []
+    func add(_ text: String, _ x0: CGFloat, _ x1: CGFloat, _ y: CGFloat, block: Int) {
+        lines.append(OCRLine(text: text, box: CGRect(x: x0, y: y, width: x1 - x0, height: 26), confidence: 0.9, block: block,
+                             wordCount: text.split(separator: " ").count))
+    }
+    add("ראשי הקורסים שלי לוח שנה הודעות התנתקות", 1000, 1900, 12, block: 1) // top menu bar
+    for (i, item) in ["דף הבית של הקורס", "מטלות", "פורום הקורס", "הקלטות מפגשים", "חומרי לימוד", "ציונים"].enumerated() {
+        add(item, 1700, 1950, 150 + CGFloat(i) * 60, block: 2) // navigation column (right-to-left site: on the right)
+    }
+    add("יחידה 5: ערכים עצמיים", 900, 1600, 150, block: 3) // the page's title
+    let prose = "בפרק זה נגדיר ערך עצמי של העתקה לינארית ונראה כיצד מוצאים ערכים עצמיים של מטריצה ריבועית"
+    for i in 0..<4 { add(prose, 400, 1600, 250 + CGFloat(i) * 50, block: 4) }
+    for (i, item) in ["הודעות אחרונות", "מפגש הנחיה 4 בזום", "בחינה 3 בדצמבר"].enumerated() {
+        add(item, 50, 350, 150 + CGFloat(i) * 50, block: 5) // side column of notices
+    }
+    add("Example: the eigenvalues are 1 and 3", 400, 1500, 470, block: -1) // read by Vision only
+    add("כל הזכויות שמורות · נגישות · תקנון", 1200, 1900, 1452, block: 6) // footer strip
+    let kept = OCRLayout.contentLines(lines, imageSize: CGSize(width: 2000, height: 1500)).map(\.text)
+    expect(kept == ["יחידה 5: ערכים עצמיים"] + Array(repeating: prose, count: 4) + ["Example: the eigenvalues are 1 and 3"],
+           "kept: \(kept)")
+    // without running text there is nothing to anchor a main column on: everything stays
+    let menus = lines.filter { $0.block == 2 }
+    expect(OCRLayout.contentLines(menus, imageSize: CGSize(width: 2000, height: 1500)) == menus, "no main column")
+}
+
+test("content region: a page loses the navigation, banner and footer along its edges, never most of itself") {
+    let page = CGRect(x: 0, y: 0, width: 1000, height: 800)
+    let framing = [
+        CGRect(x: 0, y: 0, width: 200, height: 800),       // navigation column
+        CGRect(x: 0, y: 0, width: 1000, height: 100),      // banner
+        CGRect(x: 850, y: 60, width: 150, height: 700),    // complementary column
+        CGRect(x: 0, y: 750, width: 1000, height: 50),     // footer
+        CGRect(x: 300, y: 300, width: 600, height: 300),   // a big navigation block in the middle is not an edge
+    ]
+    expect(ContentLocator.trimEdges(page, framing: framing) == CGRect(x: 200, y: 100, width: 650, height: 650),
+           "\(ContentLocator.trimEdges(page, framing: framing))")
+    let greedy = [CGRect(x: 0, y: 0, width: 330, height: 800), CGRect(x: 670, y: 0, width: 330, height: 800)]
+    expect(ContentLocator.trimEdges(page, framing: greedy) == page, "keeps the page when trimming would leave too little")
+}
+
+test("boilerplate: lines an app or site shows in most of its windows are dropped, window-specific lines kept") {
+    let f = BoilerplateFilter(minWindows: 3, minShare: 0.6, recentWindows: 8)
+    let menu = ["דף הבית של הקורס", "מטלות", "פורום הקורס", "3 הודעות חדשות"]
+    let topics = ["ערכים עצמיים ווקטורים עצמיים", "הפולינום האופייני", "דטרמיננטות", "מרחבים וקטוריים", "בסיס ומימד"]
+    var kept: [[String]] = []
+    for (i, topic) in topics.enumerated() {
+        var lines = menu
+        if i == 3 { lines[3] = "12 הודעות חדשות" } // a counter changed: still the same line
+        if i < 2 { lines.append("אלגברה לינארית 20109") } // shared by some of the site's pages only
+        lines.append(topic)
+        kept.append(f.filter(lines, template: "com.google.Chrome|openu.ac.il", window: "page\(i)"))
+    }
+    expect(kept[0].count == 6 && kept[1].count == 6, "nothing is boilerplate after one or two pages: \(kept[1])")
+    expect(kept[2] == [topics[2]] && kept[4] == [topics[4]], "menus go from the third page on: \(kept[2]) / \(kept[4])")
+    expect(!f.isBoilerplate("אלגברה לינארית 20109", template: "com.google.Chrome|openu.ac.il"), "a line of some pages stays")
+    expect(f.filter(menu, template: "com.google.Chrome|other.org", window: "x").count == 4, "another site is unaffected")
+    for _ in 0..<3 { expect(f.filter(["שורה בחלון אחד"], template: "t", window: "same").count == 1, "one window counts once") }
+    // a restored memory behaves the same
+    let copy = BoilerplateFilter(minWindows: 3, minShare: 0.6, recentWindows: 8)
+    copy.restore(f.state)
+    expect(copy.isBoilerplate("מטלות", template: "com.google.Chrome|openu.ac.il"), "restored memory")
+    // pages that no longer show the menu push it out of the memory
+    for i in 0..<8 { _ = f.filter(["דף חדש \(i) בלי תפריט"], template: "com.google.Chrome|openu.ac.il", window: "new\(i)") }
+    expect(!f.isBoilerplate("מטלות", template: "com.google.Chrome|openu.ac.il"), "old windows leave the ring")
+    expect(ActivityMonitor.isNovel("Slides: eigenvalues of a 2x2 matrix", known: ["eigenvalues", "matrix"]),
+           "OCR line with new words is kept")
+    expect(!ActivityMonitor.isNovel("ערכים עצמיים של מטריצה", known: ["ערכים", "עצמיים", "של", "מטריצה"]),
+           "OCR line Accessibility already read is not")
+}
+
+test("ocr end-to-end: Hebrew and English on a rendered screen (Vision + Tesseract)") {
+    let expected: [OCRFixtures.Line] = [
+        .init(text: "אלגברה לינארית — הרצאה 5: ערכים עצמיים ווקטורים עצמיים", size: 22, bold: true),
+        .init(text: "בהרצאה זו נלמד כיצד למצוא ערכים עצמיים של מטריצה ריבועית באמצעות הפולינום האופייני.", size: 15),
+        .init(text: "Definition: A scalar is an eigenvalue of A if Av equals a multiple of v for some nonzero vector v.", size: 15),
+        .init(text: "תרגיל 3: חשבו את הדטרמיננטה של המטריצה ומצאו את כל השורשים של הפולינום.", size: 15),
+        .init(text: "שלום דוד, מצרף את הסיכום של הפגישה מאתמול. נא לעבור על סעיף 4 לפני יום חמישי.", size: 13),
+        .init(text: "נכון, אוסיף אותו. בנוסף ה-deploy ל-staging נכשל בגלל timeout במיגרציה, אבדוק את הלוגים.", size: 15),
+    ]
+    let image = OCRFixtures.render(expected)
+    let english = expected[2].text
+    // Vision alone: the English line, and nothing invented for the Hebrew ones
+    let latinOnly = OCRService.read(image, hebrew: false, regionIsContent: true, paths: AppPaths(support: tempDir("ocr-none")))
+    let latinText = latinOnly.lines.joined(separator: "\n")
+    expect(OCRFixtures.wordRecall(english, in: latinText) >= 0.9, "Vision reads English: \(latinOnly.lines)")
+    expect(latinOnly.lines.count <= 2, "no lines invented for Hebrew text: \(latinOnly.lines)")
+    guard TesseractOCR.isAvailable(.default) else {
+        print("    (Tesseract or its Hebrew model is not installed — Hebrew part skipped)")
+        return
+    }
+    for dark in [false, true] {
+        let reading = OCRService.read(OCRFixtures.render(expected, dark: dark), hebrew: true, regionIsContent: true, paths: .default)
+        let text = reading.lines.joined(separator: "\n")
+        expect(reading.usedTesseract, "Tesseract ran")
+        for line in expected {
+            let recall = OCRFixtures.wordRecall(line.text, in: text)
+            expect(recall >= 0.85, String(format: "%@: %.2f of the words of “%@” read; got:\n%@", dark ? "dark" : "light", recall, line.text, text))
+        }
+        print(String(format: "    %@: %d lines in %.2f s", dark ? "dark" : "light", reading.lines.count, reading.seconds))
+    }
 }
 
 // MARK: - Focus controller

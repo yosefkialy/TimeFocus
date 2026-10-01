@@ -16,7 +16,7 @@ struct SettingsView: View {
                 PermissionRow(title: "נגישות (Accessibility)", detail: "חובה — לקריאת כותרות חלונות, כתובות ותוכן.",
                               granted: model.hasAccessibility,
                               action: { Permissions.promptAccessibility(); Permissions.openSettings(.accessibility) })
-                PermissionRow(title: "הקלטת מסך", detail: "רק ל-OCR (אופציונלי).", granted: model.hasScreenRecording,
+                PermissionRow(title: "הקלטת מסך", detail: "רק לזיהוי טקסט (OCR) — אופציונלי.", granted: model.hasScreenRecording,
                               action: { Permissions.requestScreenRecording(); Permissions.openSettings(.screenRecording) })
                 PermissionRow(title: "התראות", detail: "לתזכורות חזרה למיקוד.", granted: model.notificationsAuthorized,
                               action: { Permissions.openSettings(.notifications) })
@@ -60,7 +60,8 @@ struct SettingsView: View {
                 Toggle("כתובות אתרים בדפדפנים", isOn: bind(\.captureBrowserURLs))
                 Toggle("שימוש ב-AppleScript לכתובות (Chrome/Safari)", isOn: bind(\.useAppleScriptForURLs))
                 Toggle("הפעלת נגישות מלאה ביישומי Chromium/Electron", isOn: bind(\.enhanceChromiumAccessibility))
-                Toggle("OCR של החלון (דורש הקלטת מסך; ללא תמיכה בעברית)", isOn: bind(\.enableOCR))
+                Toggle("זיהוי טקסט (OCR) באזור התוכן של החלון", isOn: bind(\.enableOCR))
+                if model.settings.enableOCR { OCRSettings(interval: bind(\.ocrIntervalSeconds)) }
                 Stepper("\"לא ליד המחשב\" אחרי \(Int(model.settings.awayAfterSeconds / 60)) דק׳ ללא קלט", value: bind(\.awayAfterSeconds), in: 60...900, step: 60)
                 AppListEditor(title: "יישומים מוחרגים (נרשם רק שם היישום)", list: bind(\.excludedBundleIDs))
                 HStack {
@@ -102,6 +103,53 @@ struct SettingsView: View {
             Text("המעקב, סוגי הפעילות והמודלים שנלמדו יימחקו. מודלים שהורדו יישארו.")
         }
         .onAppear { model.refreshEnvironment() }
+    }
+}
+
+/// OCR status: the Screen Recording permission, Hebrew OCR (Tesseract + its Hebrew model) and how often to read.
+struct OCRSettings: View {
+    @EnvironmentObject var model: AppModel
+    @Binding var interval: Double
+
+    var body: some View {
+        let ocrModel = ModelCatalog.hebrewOCR
+        let progress = model.downloads[ocrModel.id]
+        let binary = TesseractOCR.binary()
+        let installed = model.isInstalled(ocrModel)
+        VStack(alignment: .leading, spacing: 6) {
+            if !model.hasScreenRecording {
+                Label("נדרשת הרשאת הקלטת מסך (למעלה, ב\"הרשאות\").", systemImage: "exclamationmark.circle").foregroundStyle(.orange)
+            }
+            HStack(alignment: .top) {
+                Image(systemName: binary != nil && installed ? "checkmark.circle.fill" : "character.bubble")
+                    .foregroundStyle(binary != nil && installed ? Theme.focusGreen : .secondary)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("עברית (Tesseract)")
+                    if binary == nil {
+                        Text("ה-OCR של macOS לא קורא עברית. כדי לקרוא עברית צריך את התוכנה החופשית Tesseract — ב-Terminal: brew install tesseract")
+                            .font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+                    } else if !installed {
+                        Text("התוכנה Tesseract מותקנת. חסר מודל העברית שלה (\(Fmt.bytes(ocrModel.approxBytes)), מ-GitHub של Tesseract).")
+                            .font(.caption).foregroundStyle(.secondary)
+                    } else {
+                        Text("עברית ואנגלית נקראות יחד: עברית ב-Tesseract, אותיות לטיניות ב-OCR של macOS.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    if let p = progress, !p.finished { ProgressView(value: p.fraction).frame(maxWidth: 220) }
+                    if let e = progress?.error { Text(e).font(.caption).foregroundStyle(.red) }
+                }
+                Spacer()
+                if installed {
+                    Button(role: .destructive) { model.deleteModel(ocrModel) } label: { Image(systemName: "trash") }.buttonStyle(.borderless)
+                } else if progress == nil || progress?.finished == true {
+                    Button("הורד") { model.download(ocrModel) }
+                }
+            }
+            Stepper("קריאה כל \(Int(interval)) שנ׳ לכל חלון (אם התוכן השתנה)", value: $interval, in: 20...300, step: 10)
+            Text("נקרא רק אזור התוכן — בלי לשוניות, סרגל סימניות, תפריטים וסרגלי צד — ושורות שחוזרות כמעט בכל החלונות של אותו יישום או אתר מסוננות. התמונה עצמה לא נשמרת.")
+                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.leading, 18)
     }
 }
 

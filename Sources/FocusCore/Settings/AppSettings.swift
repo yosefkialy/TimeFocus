@@ -45,7 +45,7 @@ public struct AppSettings: Codable, Equatable {
     public var captureAXText = true
     public var axTextRefreshSeconds: Double = 20
     public var enableOCR = false
-    public var ocrIntervalSeconds: Double = 90
+    public var ocrIntervalSeconds: Double = 60
     public var captureBrowserURLs = true
     public var useAppleScriptForURLs = true
     public var enhanceChromiumAccessibility = true

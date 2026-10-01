@@ -81,6 +81,7 @@ enum SnapshotRenderer {
         shot("hud-question", QuestionView(request: q, clusters: model.clusters, onAnswer: { _ in }, onDistraction: {}, onLater: {}),
              width: 460, height: nil)
         shot("onboarding", OnboardingView(onFinish: {}), width: 720, height: 600)
+        shot("settings-ocr", Form { Section("מעקב") { OCRSettings(interval: .constant(60)) } }.formStyle(.grouped), width: 640, height: 260)
         exit(0)
     }
 }

@@ -1,5 +1,6 @@
 import AppKit
 import ApplicationServices
+import FocusML
 import Foundation
 
 public enum CaptureReason: String {
@@ -68,6 +69,13 @@ public final class ActivityMonitor {
     private var lastSnapshotTime = Date()
     private var textCapturedAt: [String: Date] = [:]
     private var ocrAt: [String: Date] = [:]
+    /// Characters and words of the last Accessibility text of each context (OCR then adds only what it lacks).
+    private var axTextChars: [String: Int] = [:]
+    private var axWords: [String: Set<String>] = [:]
+    /// Lines each app/site shows in most of its windows (menus, navigation, toolbars) — dropped from window text.
+    private let boilerplate = BoilerplateFilter()
+    /// How each window's content area was last found and read (logged when it changes).
+    private var regionNotes: [String: String] = [:]
     private var urlScriptAt: [String: Date] = [:]
     private var lastURLByBundle: [String: (url: String?, isPrivate: Bool, at: Date)] = [:]
     private var enhancedPIDs = Set<pid_t>()
@@ -81,13 +89,14 @@ public final class ActivityMonitor {
     private var observedPID: pid_t = 0
     private var observers: [NSObjectProtocol] = []
     private let browser = BrowserBridge()
-    private let ocr = OCRService()
+    private let ocr: OCRService
     private let ownBundleID = AppPaths.ownBundleID
     /// Set by the engine: whether a pid is currently being slowed down (skip expensive IPC with it).
     public var isThrottled: ((pid_t) -> Bool)?
 
-    public init(settings: SettingsStore) {
+    public init(settings: SettingsStore, paths: AppPaths = .default) {
         self.settings = settings
+        ocr = OCRService(paths: paths)
     }
 
     public static var hasAccessibilityPermission: Bool { AXIsProcessTrusted() }
@@ -251,7 +260,23 @@ public final class ActivityMonitor {
 
         let excluded = s.excludedBundleIDs.contains(app.bundleID)
         var rawTitle = ""
-        var window: AXUIElement? = nil
+        var focusedWindow: AXUIElement? = nil
+        // what lies under the middle of the window, and the page it shows (browsers, Electron apps) — looked up at most
+        // once per capture, by hit-testing (a walk of the tree is the fallback)
+        var hitChain: [AXUIElement]? = nil
+        func chain(_ win: AXUIElement) -> [AXUIElement] {
+            if hitChain == nil { hitChain = ContentLocator.chain(under: win, pid: app.pid) }
+            return hitChain ?? []
+        }
+        var webAreaLookedUp = false
+        var webAreaElement: AXUIElement? = nil
+        func webArea(_ win: AXUIElement) -> AXUIElement? {
+            if !webAreaLookedUp {
+                webAreaLookedUp = true
+                webAreaElement = chain(win).last { AXReader.role($0) == "AXWebArea" } ?? AXReader.largestWebArea(in: win)
+            }
+            return webAreaElement
+        }
         if AXIsProcessTrusted(), !excluded {
             if s.enhanceChromiumAccessibility, !enhancedPIDs.contains(app.pid) {
                 enhancedPIDs.insert(app.pid)
@@ -262,12 +287,12 @@ public final class ActivityMonitor {
                 snap.documentPath = AXReader.documentPath(win)
                 snap.isFullScreen = AXReader.isFullScreen(win)
                 if s.captureBrowserURLs, ContextNormalizer.isBrowser(app.bundleID) {
-                    snap.url = AXReader.webURL(window: win) ?? AXReader.addressBarText(window: win)
+                    snap.url = webArea(win).flatMap(AXReader.url(ofWebArea:)) ?? AXReader.addressBarText(window: win)
                 }
                 if ContextNormalizer.isPrivateWindowTitle(rawTitle) { snap.isPrivate = true }
                 snap.title = ContextNormalizer.cleanTitle(rawTitle, appName: app.name)
                 // text is captured below once the context key is known
-                if s.captureAXText, !snap.isPrivate { window = win }
+                focusedWindow = win
             }
         }
         // AppleScript fallback for browser URLs (main thread, rate-limited). Never script an app that is currently
@@ -321,31 +346,103 @@ public final class ActivityMonitor {
             snap.mediaPlaying = playing
         }
 
-        // window text (Accessibility), refreshed per context at most every N seconds
-        if let win = window, !snap.isPrivate, !snap.isOwnApp, !throttled {
-            let last = textCapturedAt[snap.key] ?? .distantPast
-            if now.timeIntervalSince(last) >= s.axTextRefreshSeconds {
-                let text = AXReader.collectText(window: win)
-                textCapturedAt[snap.key] = now
-                if !text.isEmpty { snap.text = ContextNormalizer.redact(text) }
+        // Window content — read only from the content area (a page's main part, a document pane), never from what
+        // frames it: tabs, bookmarks, sidebars and menus show the same text whatever the window is used for.
+        let readable = !snap.isPrivate && !snap.isOwnApp && !throttled
+        let key = snap.key
+        let template = app.bundleID + "|" + (snap.host ?? "")
+        let textDue = readable && s.captureAXText && focusedWindow != nil
+            && now.timeIntervalSince(textCapturedAt[key] ?? .distantPast) >= s.axTextRefreshSeconds
+        // OCR reads what Accessibility cannot (canvas apps, PDFs, images, slides in a video); less often where
+        // Accessibility already gives plenty of text
+        let ocrInterval = s.ocrIntervalSeconds * ((axTextChars[key] ?? 0) >= 1500 ? 3 : 1)
+        let ocrDue = readable && s.enableOCR && OCRService.hasPermission
+            && now.timeIntervalSince(ocrAt[key] ?? .distantPast) >= ocrInterval
+        var region: ContentRegion? = nil
+        if textDue || ocrDue, let win = focusedWindow {
+            let isBrowser = ContextNormalizer.isBrowser(app.bundleID)
+            region = ContentLocator.locate(window: win, chain: chain(win), webArea: isBrowser ? webArea(win) : nil, isBrowser: isBrowser)
+        }
+
+        // window text (Accessibility), refreshed per context at most every N seconds: what is shown in the content area
+        if textDue, let win = focusedWindow {
+            var raw = AXReader.collectText(root: region?.element ?? win, within: region?.frame)
+            var method = "walk"
+            if raw.count < 200, let r = region, let web = r.webArea, let t = AXReader.visibleWebText(web, in: r.frame), t.count > raw.count {
+                raw = t // pages too deep for the walk's budget: the text the page shows inside the region, in a few calls
+                method = "markers"
+            }
+            // nothing yet (a page still building its tree): look again in ~5 s instead of a full refresh interval
+            textCapturedAt[key] = raw.isEmpty ? now.addingTimeInterval(min(0, 5 - s.axTextRefreshSeconds)) : now
+            // (pages wrap numbers and names in invisible direction marks — "‫24.4K‬ מנויים")
+            let shown = raw.split(whereSeparator: \.isNewline).map { OCRFusion.clean(String($0)) }.filter { !$0.isEmpty }
+            let lines = boilerplate.filter(shown, template: template, window: key)
+            axTextChars[key] = lines.reduce(0) { $0 + $1.count }
+            axWords[key] = Set(lines.flatMap { TextTokenizer.words($0, maxTokens: 400) })
+            if !lines.isEmpty { snap.text = ContextNormalizer.redact(lines.joined(separator: "\n")) }
+            // how the content area was found and read — structure and counts only, once per window and change
+            let note = "\(region?.kind.rawValue ?? "none") \(method)"
+            if regionNotes[key] != note {
+                if regionNotes.count > 500 { regionNotes.removeAll() }
+                regionNotes[key] = note
+                let r = region?.frame ?? .zero
+                Log.info(String(format: "content %@: %@ %@, hit chain %d, region %.0fx%.0f, %d lines (%d chars) of %d",
+                                app.bundleID, region?.kind.rawValue ?? "none", method, chain(win).count, r.width, r.height,
+                                lines.count, axTextChars[key] ?? 0, raw.count), "tracking")
             }
         }
 
-        // optional OCR (asynchronous; result arrives later via delegate)
-        if s.enableOCR, !snap.isPrivate, !snap.isOwnApp, OCRService.hasPermission, (snap.text?.count ?? 0) < 200 {
-            let last = ocrAt[snap.key] ?? .distantPast
-            if now.timeIntervalSince(last) >= s.ocrIntervalSeconds {
-                ocrAt[snap.key] = now
-                let key = snap.key
-                ocr.recognize(pid: app.pid, languages: ["en-US", "ar-SA", "fr-FR", "de-DE", "es-ES", "ru-RU"]) { [weak self] text in
-                    guard let self, let text else { return }
-                    self.queue.async { self.delegate?.monitor(self, didRecognizeText: ContextNormalizer.redact(text), forKey: key) }
+        // optional OCR (asynchronous; the result arrives later via the delegate)
+        if ocrDue {
+            ocrAt[key] = now
+            let hebrew = s.interfaceLanguage.hasPrefix("he") || OCRFusion.hebrewLetterCount(snap.title) > 0
+                || Locale.preferredLanguages.contains { $0.hasPrefix("he") }
+            let kind = region?.kind.rawValue ?? "none"
+            ocr.recognize(pid: app.pid, key: key, region: region?.frame, regionIsContent: region?.isContent ?? false,
+                          hebrew: hebrew) { [weak self] reading in
+                guard let self, let reading else { return }
+                self.queue.async {
+                    var lines = self.boilerplate.filter(reading.lines, template: template, window: key)
+                    // lines Accessibility already read add nothing
+                    if let known = self.axWords[key], !known.isEmpty { lines = lines.filter { Self.isNovel($0, known: known) } }
+                    // counts only — window text never goes to the log
+                    Log.info(String(format: "OCR %@: %d lines → %d new, tesseract %@, %.2f s", kind, reading.lines.count, lines.count,
+                                    reading.usedTesseract ? "yes" : "no", reading.seconds), "tracking")
+                    guard !lines.isEmpty else { return }
+                    self.delegate?.monitor(self, didRecognizeText: ContextNormalizer.redact(lines.joined(separator: "\n")), forKey: key)
                 }
             }
         }
         if textCapturedAt.count > 5000 { textCapturedAt.removeAll() }
         if ocrAt.count > 5000 { ocrAt.removeAll() }
+        if axWords.count > 400 { axWords.removeAll(); axTextChars.removeAll() }
         delegate?.monitor(self, didCapture: snap)
+    }
+
+    /// A line is novel unless most of its words are already in the window's Accessibility text.
+    public static func isNovel(_ line: String, known: Set<String>) -> Bool {
+        let words = TextTokenizer.words(line, maxTokens: 60).filter { $0.count >= 2 }
+        guard !words.isEmpty else { return false }
+        return Double(words.filter { known.contains($0) }.count) < 0.7 * Double(words.count)
+    }
+
+    // MARK: boilerplate memory (tracking queue)
+
+    public var boilerplateState: BoilerplateFilter.State {
+        dispatchPrecondition(condition: .onQueue(queue))
+        return boilerplate.state
+    }
+
+    public func restoreBoilerplate(_ state: BoilerplateFilter.State) {
+        dispatchPrecondition(condition: .onQueue(queue))
+        boilerplate.restore(state)
+    }
+
+    public func resetBoilerplate() {
+        dispatchPrecondition(condition: .onQueue(queue))
+        boilerplate.reset()
+        axWords.removeAll()
+        axTextChars.removeAll()
     }
 
     /// Runs the browser AppleScript on the main thread with a hard timeout.

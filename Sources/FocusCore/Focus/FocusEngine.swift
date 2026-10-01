@@ -126,6 +126,9 @@ public final class FocusEngine: ActivityMonitorDelegate {
     private var redirect: [ClusterID: ClusterID] = [:]
     private var watchdogPID: pid_t = 0
     private var started = false
+    /// When the learned boilerplate lines were last saved (tracking queue).
+    private var boilerplateSavedAt = Date()
+    private static let boilerplateKey = "tracking.boilerplate"
     /// Connection for the activity-type evidence (computed off the main thread, serialised by `evidenceLock`).
     private var evidenceStore: Store?
     private let evidenceLock = NSLock()
@@ -135,7 +138,7 @@ public final class FocusEngine: ActivityMonitorDelegate {
         self.settings = settings
         uiStore = try Store(url: paths.database)
         trackingStore = try Store(url: paths.database)
-        monitor = ActivityMonitor(settings: settings)
+        monitor = ActivityMonitor(settings: settings, paths: paths)
         throttler = ProcessThrottler(stateFile: paths.throttleState)
         models = ModelManager(paths: paths)
         pipeline = try LearningPipeline(paths: paths, settings: settings, models: models)
@@ -188,6 +191,9 @@ public final class FocusEngine: ActivityMonitorDelegate {
         monitor.queue.async { [weak self] in
             guard let self else { return }
             self.applyClusters(all, bundle: bundle)
+            if let state = self.trackingStore.codable(Self.boilerplateKey, as: BoilerplateFilter.State.self) {
+                self.monitor.restoreBoilerplate(state)
+            }
             if let manual = self.trackingStore.codable("focus.manual", as: ManualFocusRecord.self), manual.end > Date() {
                 self.manualFocus = ActiveFocus(clusterIDs: Set(manual.clusterIDs), start: manual.start, end: manual.end,
                                                note: manual.note, isManual: true)
@@ -205,7 +211,10 @@ public final class FocusEngine: ActivityMonitorDelegate {
         pipeline.cancel() // also kills a running llama-server
         monitor.stop()
         throttler.shutdown()
-        monitor.queue.sync { closeCurrent(at: Date()) }
+        monitor.queue.sync {
+            closeCurrent(at: Date())
+            saveBoilerplate()
+        }
         started = false
     }
 
@@ -268,13 +277,15 @@ public final class FocusEngine: ActivityMonitorDelegate {
         // OCR is asynchronous: only keep the text if the user is still on the window it was captured from
         guard current?.context.key == key, let ctx = contextCache[key], !ctx.isPrivate else { return }
         try? trackingStore.mergeContextText(id: ctx.id, text: text, now: Date())
-        lastText[ctx.id] = String(((lastText[ctx.id] ?? "") + "\n" + text).prefix(3000))
+        // newest first, as for Accessibility text: OCR brings what Accessibility did not have
+        lastText[ctx.id] = String((text + "\n" + (lastText[ctx.id] ?? "")).prefix(3000))
     }
 
     public func monitor(_ monitor: ActivityMonitor, didCapture snap: ActivitySnapshot) {
         let s = settings.current
         let now = snap.time
         rollDay(now)
+        if now.timeIntervalSince(boilerplateSavedAt) > 600 { saveBoilerplate() }
 
         // tracking paused while this capture was in flight: fail open (release everything) and stop
         guard s.trackingEnabled else {
@@ -425,6 +436,12 @@ public final class FocusEngine: ActivityMonitorDelegate {
     }
 
     // MARK: helpers (tracking queue)
+
+    /// Keeps the lines learned as menus/navigation across launches (tracking queue).
+    private func saveBoilerplate() {
+        boilerplateSavedAt = Date()
+        try? trackingStore.setCodable(Self.boilerplateKey, monitor.boilerplateState)
+    }
 
     private func rollDay(_ now: Date) {
         let d = now.dayKey
@@ -758,6 +775,7 @@ public final class FocusEngine: ActivityMonitorDelegate {
             pausedUntil = nil
             lastOnTrack = nil
             try? trackingStore.deleteAllData()
+            monitor.resetBoilerplate()
             applyClusters([], bundle: nil)
         }
         try? FileManager.default.removeItem(at: paths.studentModel)

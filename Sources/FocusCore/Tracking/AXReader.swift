@@ -54,23 +54,8 @@ enum AXReader {
         AXUIElementSetAttributeValue(app, "AXManualAccessibility" as CFString, kCFBooleanTrue)
     }
 
-    /// Breadth-first search for the first element with the given role.
-    static func find(role target: String, in root: AXUIElement, maxNodes: Int = 250, budget: TimeInterval = 0.3) -> AXUIElement? {
-        var queue: [AXUIElement] = [root]
-        var visited = 0
-        let deadline = Date().addingTimeInterval(budget) // an unresponsive app must never stall tracking
-        while !queue.isEmpty, visited < maxNodes, Date() < deadline {
-            let el = queue.removeFirst()
-            visited += 1
-            if role(el) == target { return el }
-            queue.append(contentsOf: children(el))
-        }
-        return nil
-    }
-
-    /// URL of the web page shown in a browser window (Safari / Chromium / Firefox expose AXURL on the web area).
-    static func webURL(window: AXUIElement) -> String? {
-        guard let area = find(role: "AXWebArea", in: window, maxNodes: 300) else { return nil }
+    /// URL of the page in a web area (Safari / Chromium / Firefox expose AXURL on it).
+    static func url(ofWebArea area: AXUIElement) -> String? {
         if let v = value(area, "AXURL") {
             if let u = v as? URL { return u.absoluteString }
             if let s = v as? String { return s }
@@ -106,9 +91,15 @@ enum AXReader {
         "AXDisclosureTriangle", "AXMenuButton", "AXSplitter", "AXGrowArea", "AXRuler",
     ]
 
-    /// Collects visible text from a window within node/character budgets. Password fields are never read.
-    static func collectText(window: AXUIElement, maxChars: Int = 2500, maxNodes: Int = 350, budget: TimeInterval = 0.6) -> String {
-        var queue: [(AXUIElement, Int)] = [(window, 0)]
+    private static let textAttributes = [kAXRoleAttribute, kAXSubroleAttribute, kAXValueAttribute, kAXTitleAttribute,
+                                         kAXDescriptionAttribute, kAXPositionAttribute, kAXSizeAttribute] as [String]
+
+    /// Collects the text shown under `root` within node/character budgets. With `within` (global points), only what is
+    /// on screen there: elements outside it are skipped with everything inside them, and so are elements of a pixel or
+    /// two — labels meant only for screen readers ("Chat mode", "Use the arrow keys…"). Password fields are never read.
+    static func collectText(root: AXUIElement, within region: CGRect? = nil, maxChars: Int = 2500, maxNodes: Int = 350,
+                            budget: TimeInterval = 0.6) -> String {
+        var queue: [(AXUIElement, Int)] = [(root, 0)]
         var head = 0
         var parts: [String] = []
         var total = 0
@@ -117,21 +108,29 @@ enum AXReader {
         while head < queue.count, head < maxNodes, total < maxChars, Date() < deadline {
             let (el, depth) = queue[head]
             head += 1
-            let r = role(el)
-            if skipRoles.contains(r) { continue }
-            if (string(el, kAXSubroleAttribute as String) ?? "") == "AXSecureTextField" { continue }
+            let a = attributes(el, textAttributes) // one round trip instead of one per attribute
+            let r = a[0] as? String ?? ""
+            if skipRoles.contains(r) || (a[1] as? String) == "AXSecureTextField" { continue }
+            if depth > 0, let f = rect(position: a[5], size: a[6]) {
+                if f.width < 3 || f.height < 3 { continue }
+                if let region, !f.intersects(region) { continue }
+            }
+            func text(_ i: Int) -> String? {
+                if let s = a[i] as? String { return s }
+                return (a[i] as? NSAttributedString)?.string
+            }
             var candidates: [String] = []
             switch r {
             case "AXStaticText", "AXHeading":
-                if let v = string(el, kAXValueAttribute as String) { candidates.append(v) }
-                if r == "AXHeading", let t = string(el, kAXTitleAttribute as String) { candidates.append(t) }
+                if let v = text(2) { candidates.append(v) }
+                if r == "AXHeading", let t = text(3) { candidates.append(t) }
             case "AXTextArea", "AXTextField":
-                if let v = string(el, kAXValueAttribute as String) { candidates.append(String(v.prefix(800))) }
+                if let v = text(2) { candidates.append(String(v.prefix(800))) }
             case "AXWebArea", "AXLink", "AXImage":
-                if let t = string(el, kAXTitleAttribute as String) { candidates.append(t) }
-                if r == "AXImage", let d = string(el, kAXDescriptionAttribute as String) { candidates.append(d) }
+                if let t = text(3) { candidates.append(t) }
+                if r == "AXImage", let d = text(4) { candidates.append(d) }
             case "AXCell", "AXRow":
-                if let t = string(el, kAXTitleAttribute as String) { candidates.append(t) }
+                if let t = text(3) { candidates.append(t) }
             default:
                 break
             }
